@@ -1,8 +1,10 @@
-#include <errno.h>
-#include <malloc.h>
-#include <linux/mtd/partitions.h>
-#include "../jz_sfc_nand.h"
-#include "nand_common.h"
+#ifndef __UBOOT__
+#include <linux/device.h>
+#include <linux/kernel.h>
+#endif
+#include <linux/bitfield.h>
+#include <linux/bug.h>
+#include <linux/mtd/spinand.h>
 
 #define WODPOSIT_DEVICES_NUM         1
 #define TSETUP		40

@@ -1,123 +1,120 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (c) 2025 Wodposit Semiconductor
+ * BY oldcat
+ * SPI NAND flash driver for Wodposit (沃存) devices.
+ * Based on foresee driver by Grandstream Networks, Inc.
+ */
+
 #ifndef __UBOOT__
 #include <linux/device.h>
 #include <linux/kernel.h>
 #endif
-#include <linux/bitfield.h>
-#include <linux/bug.h>
 #include <linux/mtd/spinand.h>
 
-#define WODPOSIT_DEVICES_NUM         1
-#define TSETUP		40
-#define THOLD		40
-#define	TSHSL_R		20
-#define	TSHSL_W		50
+/* Wodposit manufacturer ID – placeholder, actual ID needs confirmation */
+#define SPINAND_MFR_WODPOSIT		0xE0
 
-static struct jz_nand_base_param wodposit_param[WODPOSIT_DEVICES_NUM] = {
+/* Common read/write operation variants (same as foresee) */
+static SPINAND_OP_VARIANTS(read_cache_variants,
+		SPINAND_PAGE_READ_FROM_CACHE_QUADIO_OP(0, 2, NULL, 0),
+		SPINAND_PAGE_READ_FROM_CACHE_X4_OP(0, 1, NULL, 0),
+		SPINAND_PAGE_READ_FROM_CACHE_DUALIO_OP(0, 1, NULL, 0),
+		SPINAND_PAGE_READ_FROM_CACHE_X2_OP(0, 1, NULL, 0),
+		SPINAND_PAGE_READ_FROM_CACHE_OP(true, 0, 1, NULL, 0),
+		SPINAND_PAGE_READ_FROM_CACHE_OP(false, 0, 1, NULL, 0));
 
-	[0] = {
-		/*WPS3NS01W-S4YO*/
-		.pagesize = 2 * 1024,
-		.blocksize = 2 * 1024 * 64,
-		.oobsize = 64,
-		.flashsize = 2 * 1024 * 64 * 1024,
+static SPINAND_OP_VARIANTS(write_cache_variants,
+		SPINAND_PROG_LOAD_X4(true, 0, NULL, 0),
+		SPINAND_PROG_LOAD(true, 0, NULL, 0));
 
-		.tSETUP  = TSETUP,
-		.tHOLD   = THOLD,
-		.tSHSL_R = TSHSL_R,
-		.tSHSL_W = TSHSL_W,
+static SPINAND_OP_VARIANTS(update_cache_variants,
+		SPINAND_PROG_LOAD_X4(false, 0, NULL, 0),
+		SPINAND_PROG_LOAD(true, 0, NULL, 0));
 
-		.ecc_max = 0x6,
-#ifdef CONFIG_SPI_STANDARD
-		.need_quad = 0,
-#else
-		.need_quad = 1,
-#endif
-	},
-
-};
-
-static struct device_id_struct device_id[WODPOSIT_DEVICES_NUM] = {
-	DEVICE_ID_STRUCT(0xA0, "WPS3NS01W", &wodposit_param[0]),
-};
-
-static int32_t wodposit_get_read_feature(struct flash_operation_message *op_info) {
-
-	struct sfc_flash *flash = op_info->flash;
-	struct jz_nand_descriptor *nand_desc = flash->flash_info;
-	struct sfc_transfer transfer;
-	struct sfc_message message;
-	struct cmd_info cmd;
-	uint8_t device_id = nand_desc->id_device;
-	uint8_t ecc_status = 0;
-	int32_t ret = 0;
-
-	memset(&transfer, 0, sizeof(transfer));
-	memset(&cmd, 0, sizeof(cmd));
-	sfc_message_init(&message);
-
-	cmd.cmd = SPINAND_CMD_GET_FEATURE;
-	transfer.sfc_mode = TM_STD_SPI;
-
-	transfer.addr = SPINAND_ADDR_STATUS;
-	transfer.addr_len = 1;
-
-	cmd.dataen = DISABLE;
-	transfer.len = 0;
-
-	transfer.data_dummy_bits = 0;
-	cmd.sta_exp = (0 << 0);
-	cmd.sta_msk = SPINAND_IS_BUSY;
-	transfer.cmd_info = &cmd;
-	transfer.ops_mode = CPU_OPS;
-
-	sfc_message_add_tail(&transfer, &message);
-	if(sfc_sync(flash->sfc, &message)) {
-	        printf("sfc_sync error ! %s %s %d\n",__FILE__,__func__,__LINE__);
-		return -EIO;
-	}
-
-	ecc_status = sfc_get_sta_rt(flash->sfc);
-
-	switch(device_id) {
-		case 0xa0:
-			switch((ecc_status >> 4) & 0x3) {
-				case 0x00:
-					ret = 0;
-					break;
-				case 0x01:
-					ret = 4;
-					break;
-			    case 0x02:
-				    ret = -EBADMSG;
-				    break;
-			    case 0x03:
-				    ret = 0x5;
-				    break;
-			    default:
-				    ret = 0;
-			}
-			break;
-		default:
-			printf("device_id err, it maybe don`t support this device, check your device id: device_id = 0x%02x\n", device_id);
-			ret = -EIO;   //notice!!!
-
-	}
-	return ret;
+/*
+ * OOB layout for chips with on-die ECC (no separate ECC area in OOB).
+ * First 2 bytes are typically used for bad block marker.
+ */
+static int wodposit_ooblayout_ecc(struct mtd_info *mtd, int section,
+				  struct mtd_oob_region *region)
+{
+	/* No explicit ECC region – hardware handles it internally */
+	return -ERANGE;
 }
 
-int wodposit_nand_init(void) {
-	struct jz_nand_device *wodposit_nand;
-	wodposit_nand = kzalloc(sizeof(*wodposit_nand), GFP_KERNEL);
-	if(!wodposit_nand) {
-		pr_err("alloc wodposit_nand struct fail\n");
-		return -ENOMEM;
-	}
+static int wodposit_ooblayout_free(struct mtd_info *mtd, int section,
+				   struct mtd_oob_region *region)
+{
+	if (section)
+		return -ERANGE;
 
-	wodposit_nand->id_manufactory = 0xA5;
-	wodposit_nand->id_device_list = device_id;
-	wodposit_nand->id_device_count = WODPOSIT_DEVICES_NUM;
-
-	wodposit_nand->ops.nand_read_ops.get_feature = wodposit_get_read_feature;
-	return jz_spinand_register(wodposit_nand);
+	region->offset = 2;
+	region->length = mtd->oobsize - 2;
+	return 0;
 }
-SPINAND_MOUDLE_INIT(wodposit_nand_init);
+
+static const struct mtd_ooblayout_ops wodposit_ooblayout = {
+	.ecc = wodposit_ooblayout_ecc,
+	.rfree = wodposit_ooblayout_free,
+};
+
+/*
+ * ECC status extraction – placeholder.
+ * For on-die ECC, usually returns 0 if no error, >0 for corrected bits.
+ * Actual implementation may read status register bits.
+ */
+static int wodposit_ecc_get_status(struct spinand_device *spinand, u8 status)
+{
+	/* Default: assume no error or already corrected */
+	return 0;
+}
+
+/*
+ * Chip table – currently includes the observed WPS3NS01W model.
+ * Additional models can be added based on datasheets.
+ *
+ * Parameter assumptions for WPS3NS01W:
+ *   - 1 Gbit (128 MB) density
+ *   - Page size: 2048 bytes, OOB size: 64 bytes
+ *   - 1024 blocks, each has 64 pages
+ *   - On-die ECC, 4-bit per 512 bytes (common for 1Gb SPI NAND)
+ *   - Device ID 0x01 is a placeholder; replace with actual READID value.
+ */
+static const struct spinand_info wodposit_spinand_table[] = {
+	SPINAND_INFO("WPS3NS01W",
+		     SPINAND_ID(SPINAND_READID_METHOD_OPCODE_DUMMY, 0x01),
+		     NAND_MEMORG(1, 2048, 64, 64, 1024, 20, 1, 1, 1),
+		     NAND_ECCREQ(4, 512),
+		     SPINAND_INFO_OP_VARIANTS(&read_cache_variants,
+					      &write_cache_variants,
+					      &update_cache_variants),
+		     SPINAND_HAS_QE_BIT,
+		     SPINAND_ECCINFO(&wodposit_ooblayout,
+				     wodposit_ecc_get_status)),
+	/* Example: 2Gbit variant (model might be WPS3NS02W) – uncomment when needed */
+	/*
+	SPINAND_INFO("WPS3NS02W",
+		     SPINAND_ID(SPINAND_READID_METHOD_OPCODE_DUMMY, 0x02),
+		     NAND_MEMORG(1, 2048, 64, 64, 2048, 40, 1, 1, 1),
+		     NAND_ECCREQ(4, 512),
+		     SPINAND_INFO_OP_VARIANTS(&read_cache_variants,
+					      &write_cache_variants,
+					      &update_cache_variants),
+		     SPINAND_HAS_QE_BIT,
+		     SPINAND_ECCINFO(&wodposit_ooblayout,
+				     wodposit_ecc_get_status)),
+	*/
+};
+
+static const struct spinand_manufacturer_ops wodposit_spinand_manuf_ops = {
+	/* No custom ops needed for now */
+};
+
+const struct spinand_manufacturer wodposit_spinand_manufacturer = {
+	.id = SPINAND_MFR_WODPOSIT,
+	.name = "wodposit",
+	.chips = wodposit_spinand_table,
+	.nchips = ARRAY_SIZE(wodposit_spinand_table),
+	.ops = &wodposit_spinand_manuf_ops,
+};

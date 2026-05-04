@@ -13,7 +13,7 @@
 #include <linux/mtd/spinand.h>
 
 /* Wodposit manufacturer ID – placeholder, actual ID needs confirmation */
-#define SPINAND_MFR_WODPOSIT		0x5F
+#define SPINAND_MFR_WODPOSIT		0xA5
 
 /* Common read/write operation variants (same as foresee) */
 static SPINAND_OP_VARIANTS(read_cache_variants,
@@ -83,7 +83,7 @@ static int wodposit_ecc_get_status(struct spinand_device *spinand, u8 status)
  */
 static const struct spinand_info wodposit_spinand_table[] = {
 	SPINAND_INFO("WPS3NS01W",
-		     SPINAND_ID(SPINAND_READID_METHOD_OPCODE_DUMMY, 0x01),
+		     SPINAND_ID(SPINAND_READID_METHOD_OPCODE_DUMMY, 0xA0),
 		     NAND_MEMORG(1, 2048, 64, 64, 1024, 20, 1, 1, 1),
 		     NAND_ECCREQ(4, 512),
 		     SPINAND_INFO_OP_VARIANTS(&read_cache_variants,

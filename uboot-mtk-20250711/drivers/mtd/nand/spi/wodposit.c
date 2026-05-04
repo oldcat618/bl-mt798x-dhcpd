@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2025 Wodposit Semiconductor
- * BY oldcat
+ *
  * SPI NAND flash driver for Wodposit (沃存) devices.
  * Based on foresee driver by Grandstream Networks, Inc.
  */
@@ -13,7 +13,7 @@
 #include <linux/mtd/spinand.h>
 
 /* Wodposit manufacturer ID – placeholder, actual ID needs confirmation */
-#define SPINAND_MFR_WODPOSIT		0xE0
+#define SPINAND_MFR_WODPOSIT		0x5F
 
 /* Common read/write operation variants (same as foresee) */
 static SPINAND_OP_VARIANTS(read_cache_variants,

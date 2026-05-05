@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2025 Wodposit Semiconductor
+ * WODPOSIT SPI NAND driver By oldcat 20260505
  *
  * SPI NAND flash driver for Wodposit (沃存) devices.
  * Based on foresee driver by Grandstream Networks, Inc.
